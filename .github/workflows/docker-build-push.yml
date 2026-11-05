@@ -1,4 +1,4 @@
-name: Build and Push Docker Image
+name: Build, Push and Deploy Docker Image
 
 on:
   push:
@@ -6,6 +6,7 @@ on:
       - main
 
 jobs:
+  # JOB 1: Build Docker image and push to Docker Hub
   build-and-push:
     runs-on: ubuntu-latest
 
@@ -25,3 +26,38 @@ jobs:
           context: .
           push: true
           tags: heerkakkar/dockerized-node-service:latest
+
+  # JOB 2: Deploy on Kali Linux using self-hosted runner
+  deploy:
+    needs: build-and-push
+    runs-on: self-hosted
+
+    steps:
+      - name: Pull latest Docker image
+        run: docker pull heerkakkar/dockerized-node-service:latest
+
+      - name: Deploy container
+        env:
+          SECRET_MESSAGE: ${{ secrets.APP_SECRET_MESSAGE }}
+          AUTH_USERNAME: ${{ secrets.APP_AUTH_USERNAME }}
+          AUTH_PASSWORD: ${{ secrets.APP_AUTH_PASSWORD }}
+        run: |
+          docker rm -f my-node-container || true
+
+          docker run -d \
+            --name my-node-container \
+            --restart unless-stopped \
+            -p 3000:3000 \
+            -e SECRET_MESSAGE \
+            -e AUTH_USERNAME \
+            -e AUTH_PASSWORD \
+            heerkakkar/dockerized-node-service:latest
+
+      - name: Verify deployment
+        env:
+          AUTH_USERNAME: ${{ secrets.APP_AUTH_USERNAME }}
+          AUTH_PASSWORD: ${{ secrets.APP_AUTH_PASSWORD }}
+        run: |
+          sleep 5
+          curl --fail http://localhost:3000/
+          curl --fail -u "$AUTH_USERNAME:$AUTH_PASSWORD" http://localhost:3000/secret
